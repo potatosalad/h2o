@@ -288,6 +288,8 @@ static h2o_mruby_shared_context_t *create_shared_context(h2o_context_t *ctx)
     mrb_ary_set(shared_ctx->mrb, shared_ctx->constants, H2O_MRUBY_GENERATOR_CLASS, mrb_obj_value(generator_klass));
 
 
+    h2o_mruby_define_callback(shared_ctx->mrb, "_h2o_call_app", H2O_MRUBY_CALLBACK_ID_CALL_APP);
+
     return shared_ctx;
 }
 
@@ -341,6 +343,7 @@ static void on_context_init(h2o_handler_t *_handler, h2o_context_t *ctx)
 
     handler_ctx->handler = handler;
     handler_ctx->shared = get_shared_context(ctx);
+    handler_ctx->receiver = mrb_nil_value();
 
     mrb_state *mrb = handler_ctx->shared->mrb;
 
@@ -635,6 +638,7 @@ static int on_req(h2o_handler_t *_handler, h2o_req_t *req)
     h2o_mruby_run_fiber(ctx, ctx->proc, args, &is_delegate);
 
     mrb_gc_arena_restore(shared->mrb, gc_arena);
+
     if (is_delegate)
         return -1;
     return 0;
@@ -727,6 +731,62 @@ GotException:
     h2o_send_error_500(generator->req, "Internal Server Error", "Internal Server Error", 0);
 }
 
+
+// FIXME
+struct st_output_prefilter_t {
+    h2o_req_prefilter_t super;
+};
+
+static void on_prefilter_setup_stream(h2o_req_prefilter_t *_self, h2o_req_t *req, h2o_ostream_t **slot)
+{
+    struct st_output_prefilter_t *self = (void *)_self;
+
+    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_LOCATION, H2O_STRLIT("/hogefuga"));
+
+    h2o_setup_next_prefilter(&self->super, req, slot);
+}
+
+static void call_app(h2o_mruby_context_t *ctx, mrb_value receiver, mrb_value args)
+{
+    mrb_value genref = mrb_ary_entry(args, 1);
+    h2o_mruby_generator_t *generator = h2o_mruby_get_generator(ctx->shared->mrb, genref);
+    if (generator == NULL) {
+        /* TODO: throw exception? */
+        return;
+    }
+    if (generator->req == NULL) {
+        /* TODO: do what? */
+        return;
+    }
+
+    assert(mrb_nil_p(ctx->receiver));
+    ctx->receiver = receiver;
+    mrb_gc_register(ctx->shared->mrb, receiver);
+
+    mrb_value env = mrb_ary_entry(args, 0);
+
+    h2o_req_t *req = generator->req;
+    /*
+    size_t confpath_len_wo_slash = generator->req->pathconf->path.len;
+    if (generator->req->pathconf->path.base[generator->req->pathconf->path.len - 1] == '/')
+        --confpath_len_wo_slash;
+    mrb_hash_set(mrb, env, mrb_ary_entry(shared->constants, H2O_MRUBY_LIT_SCRIPT_NAME),
+                 mrb_str_new(mrb, generator->req->pathconf->path.base, confpath_len_wo_slash));
+    mrb_hash_set(mrb, env, mrb_ary_entry(shared->constants, H2O_MRUBY_LIT_PATH_INFO),
+                 mrb_str_new(mrb, generator->req->path_normalized.base + confpath_len_wo_slash,
+                             generator->req->path_normalized.len - confpath_len_wo_slash));
+     */
+
+
+    /* add prefilter */
+    struct st_output_prefilter_t *prefilter;
+    prefilter = (void *)h2o_add_prefilter(req, sizeof(*prefilter));
+    prefilter->super.on_setup_ostream = on_prefilter_setup_stream;
+
+    h2o_delegate_request_deferred(req, &generator->ctx->handler->super);
+    h2o_send_redirect_internal(req, method, errordoc->url.base, errordoc->url.len, 0);
+}
+
 void h2o_mruby_run_fiber(h2o_mruby_context_t *ctx, mrb_value receiver, mrb_value input, int *is_delegate)
 {
     ctx->shared->current_context = ctx;
@@ -799,6 +859,9 @@ void h2o_mruby_run_fiber(h2o_mruby_context_t *ctx, mrb_value receiver, mrb_value
                 break;
             case H2O_MRUBY_CALLBACK_ID_HTTP_FETCH_CHUNK:
                 input = h2o_mruby_http_fetch_chunk_callback(ctx, receiver, args, &run_again);
+                break;
+            case H2O_MRUBY_CALLBACK_ID_CALL_APP:
+                call_app(ctx, receiver, args);
                 break;
             default:
                 input = mrb_exc_new_str_lit(mrb, E_RUNTIME_ERROR, "unexpected callback id sent from rack app");

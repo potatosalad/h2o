@@ -1,5 +1,18 @@
 module H2O
 
+  class << self
+    @@generator = nil
+    @@app = Proc.new do |req|
+      _h2o_call_app(req, @@generator)
+    end
+    def app
+      @@app
+    end
+    def generator=(gen)
+      @@generator = gen
+    end
+  end
+
   class ConfigurationContext
     def self.instance()
       @@instance

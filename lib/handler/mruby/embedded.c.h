@@ -44,11 +44,14 @@
     "        while 1\n"                                                                                                            \
     "          begin\n"                                                                                                            \
     "            while 1\n"                                                                                                        \
+    "              H2O.generator = generator\n"                                                                                    \
     "              resp = app.call(req)\n"                                                                                         \
+    "              H2O.generator = nil\n"                                                                                          \
     "              cached = self_fiber\n"                                                                                          \
     "              (req, generator) = Fiber.yield(*resp, generator)\n"                                                             \
     "            end\n"                                                                                                            \
     "          rescue => e\n"                                                                                                      \
+    "            H2O.generator = nil\n"                                                                                            \
     "            cached = self_fiber\n"                                                                                            \
     "            (req, generator) = Fiber.yield([H2O_CALLBACK_ID_EXCEPTION_RAISED, e, generator])\n"                               \
     "          end\n"                                                                                                              \

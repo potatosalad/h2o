@@ -63,11 +63,14 @@ module Kernel
         while 1
           begin
             while 1
+              H2O.generator = generator
               resp = app.call(req)
+              H2O.generator = nil
               cached = self_fiber
               (req, generator) = Fiber.yield(*resp, generator)
             end
           rescue => e
+            H2O.generator = nil
             cached = self_fiber
             (req, generator) = Fiber.yield([H2O_CALLBACK_ID_EXCEPTION_RAISED, e, generator])
           end

@@ -95,11 +95,13 @@ typedef struct st_h2o_mruby_shared_context_t {
     } symbols;
 } h2o_mruby_shared_context_t;
 
+typedef struct st_h2o_mruby_generator_t h2o_mruby_generator_t;
 typedef struct st_h2o_mruby_context_t {
     h2o_mruby_handler_t *handler;
     mrb_value proc;
     h2o_mruby_shared_context_t *shared;
     mrb_value pendings;
+    mrb_value receiver;
 } h2o_mruby_context_t;
 
 typedef struct st_h2o_mruby_chunked_t h2o_mruby_chunked_t;
@@ -122,6 +124,7 @@ typedef struct st_h2o_mruby_generator_t {
 #define H2O_MRUBY_CALLBACK_ID_SEND_CHUNKED_EOS -4
 #define H2O_MRUBY_CALLBACK_ID_HTTP_JOIN_RESPONSE -5
 #define H2O_MRUBY_CALLBACK_ID_HTTP_FETCH_CHUNK -6
+#define H2O_MRUBY_CALLBACK_ID_CALL_APP -7
 
 #define h2o_mruby_assert(mrb)                                                                                                      \
     if (mrb->exc != NULL)                                                                                                          \
